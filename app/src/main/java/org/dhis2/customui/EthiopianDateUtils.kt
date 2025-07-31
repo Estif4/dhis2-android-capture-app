@@ -15,9 +15,17 @@ object EthiopianDateUtils {
     )
 
     fun formatEthiopianDate(date: Date): String {
-        val ethioDate = EthiopianDateConverter.gregorianToEthiopian(date)
+        val ethioDate = org.dhis2.commons.periods.data.EthiopianDateConverter.gregorianToEthiopian(date)
         return "${ethiopianMonthNames[ethioDate.month - 1]} ${ethioDate.day}, ${ethioDate.year}"
-
+    }
+    
+    /**
+     * Get the current biweekly period for today's date
+     * This ensures consistency when retrieving current period data
+     */
+    fun getCurrentBiWeeklyPeriod(): EthiopianPeriod {
+        val today = org.dhis2.commons.periods.data.EthiopianDateConverter.gregorianToEthiopian(Date())
+        return getBiWeeklyPeriodForDate(today)
     }
 
     fun getEthiopianPeriods(
@@ -28,8 +36,8 @@ object EthiopianDateUtils {
         displayFromYear: Int? = null
     ): List<EthiopianPeriod> {
         val baseDate = selectedDate ?: Date()
-        val baseEthioDate = EthiopianDateConverter.gregorianToEthiopian(baseDate)
-        val currentEthYear = EthiopianDateConverter.gregorianToEthiopian(Date()).year
+        val baseEthioDate = org.dhis2.commons.periods.data.EthiopianDateConverter.gregorianToEthiopian(baseDate)
+        val currentEthYear = org.dhis2.commons.periods.data.EthiopianDateConverter.gregorianToEthiopian(Date()).year
 
         val periods = when (periodType) {
             PeriodType.Daily -> generateDailyPeriods(baseEthioDate, currentEthYear, minYear, openFuturePeriods)
@@ -138,36 +146,68 @@ object EthiopianDateUtils {
         futurePeriods: Int
     ): List<EthiopianPeriod> {
         val periods = mutableListOf<EthiopianPeriod>()
-        val totalBiWeeksInYear = 26 // 52 weeks / 2 = 26 biweeks
-        val currentBiWeek = calculateBiWeekOfYear(baseDate)
-
-        for (year in minYear..currentYear) {
-            val maxBiWeeks = if (year == currentYear) min(currentBiWeek + futurePeriods, totalBiWeeksInYear) else totalBiWeeksInYear
-
-            for (biWeek in 1..maxBiWeeks) {
-                val startDay = (biWeek - 1) * 14 + 1
-                val endDay = min(biWeek * 14, if (year % 4 == 3) 366 else 365)
-
-                val startEthDate =  EthiopianDateConverter.dayOfYearToEthiopianDate(year, startDay)
-                val endEthDate =  EthiopianDateConverter.dayOfYearToEthiopianDate(year, endDay)
-
+        
+        // Ethiopian calendar: Each year has 365 days (366 in leap year)
+        // BiWeekly periods start from Meskerem 1 (start of Ethiopian year)
+        for (year in minYear..currentYear + futurePeriods) {
+            if (year > currentYear + futurePeriods) break
+            
+            // Calculate how many biweekly periods to generate for this year
+            val isCurrentYear = (year == currentYear)
+            val currentDayOfYear = if (isCurrentYear) calculateDayOfYear(baseDate) else 365
+            val maxBiWeeksInYear = if (year % 4 == 3) 26 else 26 // 365/14 = 26 biweeks per year
+            
+            for (biWeekNum in 1..maxBiWeeksInYear) {
+                val startDay = (biWeekNum - 1) * 14 + 1
+                val endDay = min(biWeekNum * 14, if (year % 4 == 3) 366 else 365)
+                
+                // Only include periods up to current date + future periods
+                if (isCurrentYear && startDay > currentDayOfYear + (futurePeriods * 14)) break
+                
+                val startEthDate = org.dhis2.commons.periods.data.EthiopianDateConverter.dayOfYearToEthiopianDate(year, startDay)
+                val endEthDate = org.dhis2.commons.periods.data.EthiopianDateConverter.dayOfYearToEthiopianDate(year, endDay)
+                
+                // Ensure consistent labeling
                 val label = buildBiWeeklyLabel(startEthDate, endEthDate, year)
-
-                val startDate = EthiopianDateConverter.ethiopianToGregorian(
+                
+                val startDate = org.dhis2.commons.periods.data.EthiopianDateConverter.ethiopianToGregorian(
                     startEthDate.year,
                     startEthDate.month,
                     startEthDate.day
                 )
+                
                 periods.add(EthiopianPeriod(startDate, label))
             }
         }
 
-        return periods
+        return periods.sortedBy { it.startDate }
     }
 
     private fun calculateBiWeekOfYear(date: EthiopianDate): Int {
         val dayOfYear = calculateDayOfYear(date)
         return (dayOfYear - 1) / 14 + 1
+    }
+    
+    /**
+     * Get the biweekly period that contains the given Ethiopian date
+     * This ensures consistency between display and retrieval
+     */
+    fun getBiWeeklyPeriodForDate(date: EthiopianDate): EthiopianPeriod {
+        val biWeekNum = calculateBiWeekOfYear(date)
+        val startDay = (biWeekNum - 1) * 14 + 1
+        val endDay = min(biWeekNum * 14, if (date.year % 4 == 3) 366 else 365)
+        
+        val startEthDate = org.dhis2.commons.periods.data.EthiopianDateConverter.dayOfYearToEthiopianDate(date.year, startDay)
+        val endEthDate = org.dhis2.commons.periods.data.EthiopianDateConverter.dayOfYearToEthiopianDate(date.year, endDay)
+        
+        val label = buildBiWeeklyLabel(startEthDate, endEthDate, date.year)
+        val startDate = org.dhis2.commons.periods.data.EthiopianDateConverter.ethiopianToGregorian(
+            startEthDate.year,
+            startEthDate.month,
+            startEthDate.day
+        )
+        
+        return EthiopianPeriod(startDate, label)
     }
 
     private fun calculateDayOfYear(date: EthiopianDate): Int {
@@ -188,11 +228,16 @@ object EthiopianDateUtils {
         endDate: EthiopianDate,
         year: Int
     ): String {
+        // Create consistent biweekly labels using standard format
+        val startMonthName = ethiopianMonthNames[startDate.month - 1]
+        val endMonthName = ethiopianMonthNames[endDate.month - 1]
+        
         return if (startDate.month == endDate.month) {
-            "${ethiopianMonthNames[startDate.month - 1]} ${startDate.day}-${endDate.day}, $year"
+            // Same month: "Meskerem 1-14, 2015"
+            "$startMonthName ${startDate.day}-${endDate.day}, $year"
         } else {
-            "${ethiopianMonthNames[startDate.month - 1]} ${startDate.day}-" +
-                    "${ethiopianMonthNames[endDate.month - 1]} ${endDate.day}, $year"
+            // Different months: "Nehase 16 - Meskerem 1, 2015" 
+            "$startMonthName ${startDate.day} - $endMonthName ${endDate.day}, $year"
         }
     }
     private fun generateMonthlyPeriods(
