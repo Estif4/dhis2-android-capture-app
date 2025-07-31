@@ -82,6 +82,13 @@ class CalendarPicker(
         if (listener == null) {
             throw IllegalArgumentException("Listener must be set up")
         }
+        
+        // If Ethiopian calendar is enabled, show Ethiopian date picker directly
+        if (repository.isEthiopianEnabled()) {
+            showEthiopianDatePicker()
+            return
+        }
+        
         setCalendar()
         datePickerVisibility(repository.isDatePickerStyle())
         setFuturesDates()
