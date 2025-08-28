@@ -195,8 +195,14 @@ class PeriodStepProviderImpl(
      */
     private fun shouldUseEthiopianCalendar(locale: Locale): Boolean {
         // Check if the locale is Ethiopian (Amharic or Ethiopia)
-        return locale.country.equals("ET", ignoreCase = true) ||
+        val isEthiopianLocale = locale.country.equals("ET", ignoreCase = true) ||
                 locale.language.equals("am", ignoreCase = true)
+        
+        // TODO: In the future, this could also check a system setting or user preference
+        // for calendar type. For now, we use locale-based detection which is the 
+        // standard approach for internationalization.
+        
+        return isEthiopianLocale
     }
 
     /**
