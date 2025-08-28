@@ -6,6 +6,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.apache.commons.text.WordUtils
+import org.dhis2.commons.periods.data.EthiopianDateConverter
 import org.dhis2.commons.viewmodel.DispatcherProvider
 import org.hisp.dhis.android.core.D2
 import org.hisp.dhis.android.core.period.Period
@@ -81,14 +82,8 @@ class PeriodStepProviderImpl(
                 periodString = DEFAULT_PERIOD_WEEK
                 formattedDate = periodString.format(
                     weekOfTheYear(period.periodType()!!, period.periodId()!!),
-                    SimpleDateFormat(
-                        DATE_FORMAT_EXPRESSION,
-                        locale,
-                    ).format(period.startDate()!!),
-                    SimpleDateFormat(
-                        DATE_FORMAT_EXPRESSION,
-                        locale,
-                    ).format(period.endDate()!!),
+                    formatDateWithCalendar(period.startDate()!!, DATE_FORMAT_EXPRESSION, locale),
+                    formatDateWithCalendar(period.endDate()!!, DATE_FORMAT_EXPRESSION, locale),
                 )
             }
 
@@ -97,11 +92,7 @@ class PeriodStepProviderImpl(
             }
 
             PeriodType.Monthly ->
-                formattedDate =
-                    SimpleDateFormat(
-                        MONTHLY_FORMAT_EXPRESSION,
-                        locale,
-                    ).format(period.startDate()!!)
+                formattedDate = formatDateWithCalendar(period.startDate()!!, MONTHLY_FORMAT_EXPRESSION, locale)
 
             PeriodType.BiMonthly,
             PeriodType.Quarterly,
@@ -112,29 +103,15 @@ class PeriodStepProviderImpl(
             PeriodType.FinancialJuly,
             PeriodType.FinancialOct,
             -> formattedDate = periodString.format(
-                SimpleDateFormat(
-                    MONTHLY_FORMAT_EXPRESSION,
-                    locale,
-                ).format(period.startDate()!!),
-                SimpleDateFormat(
-                    MONTHLY_FORMAT_EXPRESSION,
-                    locale,
-                ).format(period.endDate()!!),
+                formatDateWithCalendar(period.startDate()!!, MONTHLY_FORMAT_EXPRESSION, locale),
+                formatDateWithCalendar(period.endDate()!!, MONTHLY_FORMAT_EXPRESSION, locale),
             )
 
             PeriodType.Yearly ->
-                formattedDate =
-                    SimpleDateFormat(
-                        YEARLY_FORMAT_EXPRESSION,
-                        locale,
-                    ).format(period.startDate()!!)
+                formattedDate = formatDateWithCalendar(period.startDate()!!, YEARLY_FORMAT_EXPRESSION, locale)
 
             else ->
-                formattedDate =
-                    SimpleDateFormat(
-                        SIMPLE_DATE_FORMAT,
-                        locale,
-                    ).format(period.startDate()!!)
+                formattedDate = formatDateWithCalendar(period.startDate()!!, SIMPLE_DATE_FORMAT, locale)
         }
         return WordUtils.capitalize(formattedDate)
     }
@@ -209,6 +186,73 @@ class PeriodStepProviderImpl(
             ).years
 
             null -> 0
+        }
+    }
+
+    /**
+     * Determines if Ethiopian calendar should be used.
+     * This checks if the locale is Ethiopia or if there's a specific calendar setting.
+     */
+    private fun shouldUseEthiopianCalendar(locale: Locale): Boolean {
+        // Check if the locale is Ethiopian (Amharic or Ethiopia)
+        val isEthiopianLocale = locale.country.equals("ET", ignoreCase = true) ||
+                locale.language.equals("am", ignoreCase = true)
+        
+        // TODO: In the future, this could also check a system setting or user preference
+        // for calendar type. For now, we use locale-based detection which is the 
+        // standard approach for internationalization.
+        
+        return isEthiopianLocale
+    }
+
+    /**
+     * Formats a date using Ethiopian calendar if appropriate, otherwise uses Gregorian.
+     */
+    private fun formatDateWithCalendar(date: Date, formatExpression: String, locale: Locale): String {
+        return if (shouldUseEthiopianCalendar(locale)) {
+            formatEthiopianDate(date, formatExpression)
+        } else {
+            SimpleDateFormat(formatExpression, locale).format(date)
+        }
+    }
+
+    /**
+     * Formats a date using Ethiopian calendar with the appropriate format.
+     */
+    private fun formatEthiopianDate(date: Date, formatExpression: String): String {
+        val ethDate = EthiopianDateConverter.gregorianToEthiopian(date)
+        return when (formatExpression) {
+            DATE_FORMAT_EXPRESSION -> String.format("%04d-%02d-%02d", ethDate.year, ethDate.month, ethDate.day)
+            YEARLY_FORMAT_EXPRESSION -> ethDate.year.toString()
+            SIMPLE_DATE_FORMAT -> String.format("%d/%d/%04d", ethDate.day, ethDate.month, ethDate.year)
+            MONTHLY_FORMAT_EXPRESSION -> {
+                // Use Ethiopian month names if available, otherwise fallback to numeric format
+                val monthName = getEthiopianMonthName(ethDate.month)
+                "$monthName ${ethDate.year}"
+            }
+            else -> String.format("%02d/%02d/%04d", ethDate.day, ethDate.month, ethDate.year)
+        }
+    }
+
+    /**
+     * Returns Ethiopian month name for the given month number (1-13).
+     */
+    private fun getEthiopianMonthName(month: Int): String {
+        return when (month) {
+            1 -> "Meskerem"
+            2 -> "Tikimt"
+            3 -> "Hidar"
+            4 -> "Tahsas"
+            5 -> "Tir"
+            6 -> "Yekatit"
+            7 -> "Megabit"
+            8 -> "Miazia"
+            9 -> "Ginbot"
+            10 -> "Sene"
+            11 -> "Hamle"
+            12 -> "Nehase"
+            13 -> "Pagume"
+            else -> "Month $month"
         }
     }
 

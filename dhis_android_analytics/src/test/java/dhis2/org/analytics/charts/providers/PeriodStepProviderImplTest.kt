@@ -239,6 +239,36 @@ class PeriodStepProviderImplTest {
         assertTrue(diff == 2)
     }
 
+    @Test
+    fun `Should format period in Ethiopian calendar for Ethiopian locale`() {
+        val ethiopianLocale = java.util.Locale("am", "ET") // Amharic locale for Ethiopia
+        val period = generatePeriod(
+            PeriodType.Monthly,
+            GregorianCalendar(2023, 0, 15).time, // January 15, 2023 (Gregorian)
+            GregorianCalendar(2023, 1, 14).time  // February 14, 2023 (Gregorian)
+        )
+
+        val result = periodStepProvider.periodUIString(ethiopianLocale, period)
+
+        // The result should contain Ethiopian month names and year
+        assertTrue("Result should contain Ethiopian formatting", result.contains("Tir") || result.contains("2015"))
+    }
+
+    @Test
+    fun `Should format period in Gregorian calendar for non-Ethiopian locale`() {
+        val englishLocale = java.util.Locale("en", "US")
+        val period = generatePeriod(
+            PeriodType.Monthly,
+            GregorianCalendar(2023, 0, 15).time, // January 15, 2023
+            GregorianCalendar(2023, 1, 14).time  // February 14, 2023
+        )
+
+        val result = periodStepProvider.periodUIString(englishLocale, period)
+
+        // The result should contain Gregorian formatting (Jan/January and 2023)
+        assertTrue("Result should contain Gregorian formatting", result.contains("Jan") || result.contains("2023"))
+    }
+
     private fun generatePeriod(periodType: PeriodType, startDate: Date, endDate: Date) =
         Period.builder()
             .periodId("")
